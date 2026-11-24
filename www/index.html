@@ -74,6 +74,17 @@ nav button.on{color:var(--pri);font-weight:700}
 .wr .sm2{font-size:13px;color:var(--mut)}
 .wr .am{direction:ltr;text-align:left;font-weight:700;font-size:14px;line-height:1.5}
 h4{margin:2px 0 10px;font-size:17px}
+/* full-screen preview */
+#vw{position:fixed;inset:0;z-index:25;background:#4b5755;display:flex;flex-direction:column}
+#vw.hidden{display:none}
+.vwt{display:flex;align-items:center;gap:6px;padding:8px 10px;padding-top:calc(8px + env(safe-area-inset-top));background:var(--pri);color:#fff}
+.vwt .ttl{flex:1;font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.vwt button{border:0;border-radius:8px;padding:9px 10px;font-size:14px;font-family:inherit;background:rgba(255,255,255,.22);color:#fff;font-weight:700}
+.vwb{flex:1;overflow:auto;padding:10px;-webkit-overflow-scrolling:touch}
+.vwb .paper{position:relative;background:#fff;margin:0 auto 12px;width:100%;aspect-ratio:210/297;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.vwb.z .paper{width:230%;margin:0 0 12px}
+.vwb .paper img{position:absolute;left:0;top:2.02%;width:100%;display:block}
+.vwb .pn{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:10px;color:#888}
 /* report (shared by preview, PDF and print) */
 .rpt{width:794px;background:#fff;color:#111;padding:36px 40px;font-size:14px;direction:rtl;font-family:Tahoma,Arial,"Noto Naskh Arabic","Noto Sans Arabic",sans-serif;line-height:1.45}
 .rpt h1{font-size:23px;margin:0 0 4px}
@@ -87,7 +98,7 @@ h4{margin:2px 0 10px;font-size:17px}
 .rpt .foot{margin-top:18px;color:#777;font-size:11px}
 #printArea{display:none}
 @media print{
-  header,main,nav,.ov,#toast{display:none!important}
+  header,main,nav,.ov,#vw,#toast{display:none!important}
   #printArea{display:block!important}
   .rpt{width:auto;padding:0}
   @page{size:A4;margin:12mm}
@@ -106,6 +117,7 @@ h4{margin:2px 0 10px;font-size:17px}
 <div class="ov hidden" id="ov"><div class="sheet" id="sheet"></div></div>
 <div class="ov hidden" id="cf"></div>
 <div id="toast"></div>
+<div id="vw" class="hidden"></div>
 <div id="printArea"></div>
 <input type="file" id="restoreFile" accept=".json,application/json" style="display:none">
 <script src="lib/html2canvas.min.js"></script>
@@ -120,7 +132,7 @@ var CUR={IQD:'دينار',USD:'دولار'};
 var TYPE={'in':'وارد','out':'صادر','adv':'سلفة'};
 var db={seq:0,entries:[]};
 var ui={tab:'home',day:todayStr(),worker:null,q:'',rpt:{type:'day',day:todayStr(),from:todayStr(),to:todayStr(),worker:''}};
-var sheetOpen=false;
+var sheetOpen=false,viewerOpen=false,viewRep=null,zoomed=false;
 
 function $(id){return document.getElementById(id)}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -231,7 +243,7 @@ function renderWorker(){
   var s=sums(list);
   var h='<div class="btns"><button class="btn" id="wback">‹ رجوع</button><button class="btn adv" data-add="adv" data-worker="'+esc(ui.worker)+'">＋ سلفة</button></div>';
   h+='<div class="card"><div class="lbl">إجمالي السلف</div><div class="bal">'+balCell('دينار',s.IQD.adv)+balCell('دولار',s.USD.adv)+'</div></div>';
-  h+='<div class="btns"><button class="btn pri" id="wpdf">إرسال PDF</button>'+(isNative()?'':'<button class="btn" id="wprint">طباعة</button>')+'</div>';
+  h+='<div class="btns"><button class="btn" id="wview">معاينة</button><button class="btn" id="wprint">طباعة</button><button class="btn pri" id="wpdf">إرسال PDF</button></div>';
   h+='<div class="card">'+(list.length?list.map(function(e){return itemHTML(e,true)}).join(''):'<div class="empty">لا توجد سلف</div>')+'</div>';
   $('app').innerHTML=h;
 }
@@ -247,8 +259,8 @@ function renderReports(){
     if(!r.worker||!ws.some(function(w){return w.name===r.worker}))r.worker=ws.length?ws[0].name:'';
     h+='<label class="lbl">العامل</label>'+(ws.length?'<select id="r_w">'+ws.map(function(w){return '<option value="'+esc(w.name)+'"'+(w.name===r.worker?' selected':'')+'>'+esc(w.name)+'</option>'}).join('')+'</select>':'<div class="empty">لا توجد سلف مسجلة</div>');
   }
-  h+='</div><div class="pvbox" id="rp"></div>';
-  h+='<div class="btns"><button class="btn pri" id="rpdf">إرسال PDF</button>'+(isNative()?'':'<button class="btn" id="rprint">طباعة</button>')+'</div>';
+  h+='</div><div class="card" id="rp"></div>';
+  h+='<div class="btns"><button class="btn" id="rview">معاينة</button><button class="btn" id="rprint">طباعة</button><button class="btn pri" id="rpdf">إرسال PDF</button></div>';
   $('app').innerHTML=h;
   showPreview();
 }
@@ -260,11 +272,14 @@ function currentReport(){
 }
 function showPreview(){
   var box=$('rp');if(!box)return;
-  var rep=currentReport();
-  box.innerHTML='<div class="pv">'+rep.html+'</div>';
-  var pv=box.firstChild;var k=box.clientWidth/794;
-  pv.style.transform='scale('+k+')';pv.style.transformOrigin='top right';
-  box.style.height=Math.ceil(pv.offsetHeight*k)+'px';
+  var r=ui.rpt,n,unit;
+  if(r.type==='worker'){n=workerEntries(r.worker).length;unit='سلفة'}
+  else{
+    var x=r.type==='day'?r.day:r.from,y=r.type==='day'?r.day:r.to;
+    if(x>y){var t=x;x=y;y=t}
+    n=db.entries.filter(function(e){return e.date>=x&&e.date<=y}).length;unit='حركة';
+  }
+  box.innerHTML='<div class="empty" style="padding:6px 0">'+n+' '+unit+' في هذا التقرير. اضغط معاينة أو طباعة أو إرسال.</div>';
 }
 
 function renderSettings(){
@@ -354,6 +369,7 @@ function confirmBox(msg,okText,danger){
   });
 }
 window.addEventListener('popstate',function(){
+  if(viewerOpen){hideViewer();return}
   if(sheetOpen){hideSheet();return}
   if(ui.tab==='adv'&&ui.worker){ui.worker=null;render()}
 });
@@ -412,7 +428,9 @@ function buildReport(kind,p){
   return {html:h,filename:file,title:title};
 }
 
-async function makePDF(html){
+var rcache={html:null,pages:null};
+async function renderPages(html){
+  if(rcache.html===html&&rcache.pages)return rcache.pages;
   var host=document.createElement('div');
   host.style.cssText='position:absolute;left:0;top:0;width:794px;z-index:-1;background:#fff';
   host.innerHTML=html;document.body.appendChild(host);
@@ -421,27 +439,38 @@ async function makePDF(html){
     var top=el.getBoundingClientRect().top;
     var totalH=Math.ceil(el.getBoundingClientRect().height);
     var cuts=Array.prototype.map.call(el.querySelectorAll('tbody tr'),function(r){return Math.ceil(r.getBoundingClientRect().bottom-top)});
-    var jsPDF=window.jspdf.jsPDF;
-    var pdf=new jsPDF({unit:'mm',format:'a4',orientation:'portrait',compress:true});
     var W=210,H=297,M=6,pxmm=794/W,pageH=Math.floor((H-2*M-6)*pxmm);
-    var pages=[],start=0;
+    var ranges=[],start=0;
     while(start<totalH-1){
       var limit=start+pageH,cut=limit;
       if(limit>=totalH)cut=totalH;
       else{var best=-1;cuts.forEach(function(b){if(b>start+60&&b<=limit&&b>best)best=b});if(best>0)cut=best}
-      pages.push([start,cut]);start=cut;
+      ranges.push([start,cut]);start=cut;
     }
-    for(var i=0;i<pages.length;i++){
-      var s=pages[i][0],c=pages[i][1];
-      var canvas=await html2canvas(el,{scale:2,backgroundColor:'#ffffff',logging:false,x:0,y:s,width:794,height:c-s,windowWidth:794,scrollX:0,scrollY:0});
-      if(i>0)pdf.addPage();
-      pdf.addImage(canvas.toDataURL('image/jpeg',0.85),'JPEG',0,M,W,(c-s)/pxmm);
-      pdf.setFontSize(8);pdf.setTextColor(120);
-      pdf.text((i+1)+' / '+pages.length,W/2,H-4,{align:'center'});
+    var out=[];
+    for(var i=0;i<ranges.length;i++){
+      var s0=ranges[i][0],c=ranges[i][1];
+      var canvas=await html2canvas(el,{scale:2,backgroundColor:'#ffffff',logging:false,x:0,y:s0,width:794,height:c-s0,windowWidth:794,scrollX:0,scrollY:0});
+      out.push({url:canvas.toDataURL('image/jpeg',0.85),h:(c-s0)/pxmm});
+      canvas.width=1;canvas.height=1;
     }
-    return pdf.output('blob');
+    rcache={html:html,pages:out};
+    return out;
   }finally{host.remove()}
 }
+function pdfFromPages(pages){
+  var jsPDF=window.jspdf.jsPDF;
+  var pdf=new jsPDF({unit:'mm',format:'a4',orientation:'portrait',compress:true});
+  var W=210,H=297,M=6;
+  pages.forEach(function(p,i){
+    if(i>0)pdf.addPage();
+    pdf.addImage(p.url,'JPEG',0,M,W,p.h);
+    pdf.setFontSize(8);pdf.setTextColor(120);
+    pdf.text((i+1)+' / '+pages.length,W/2,H-4,{align:'center'});
+  });
+  return pdf.output('blob');
+}
+async function makePDF(html){return pdfFromPages(await renderPages(html))}
 
 /* ---------- sharing / files ---------- */
 function isNative(){return !!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform())}
@@ -464,6 +493,31 @@ async function shareFile(blob,name,title){
     if(e&&(e.name==='AbortError'||/cancel/i.test(m)))return false;
     toast('تعذر الإرسال: '+m);return false;
   }
+}
+async function openPreview(rep){
+  toast('جارٍ تجهيز المعاينة...');
+  try{
+    var pages=await renderPages(rep.html);
+    viewRep=rep;zoomed=false;
+    var h='<div class="vwt"><button id="vclose">✕ إغلاق</button><div class="ttl">'+esc(rep.title)+'</div><button id="vzoom">🔍</button><button id="vprint">طباعة</button><button id="vpdf">PDF</button></div><div class="vwb" id="vwb">';
+    pages.forEach(function(p,i){h+='<div class="paper"><img src="'+p.url+'" alt=""><div class="pn">'+(i+1)+' / '+pages.length+'</div></div>'});
+    h+='</div>';
+    $('vw').innerHTML=h;
+    $('vw').classList.remove('hidden');
+    $('toast').classList.remove('on');
+    if(!viewerOpen){viewerOpen=true;history.pushState({v:1},'')}
+  }catch(e){toast('تعذر تجهيز المعاينة: '+(e&&e.message||e))}
+}
+function hideViewer(){viewerOpen=false;viewRep=null;$('vw').classList.add('hidden');$('vw').innerHTML=''}
+function closeViewer(){if(viewerOpen)history.back()}
+async function printAny(rep){
+  if(!isNative()){printReport(rep);return}
+  toast('جارٍ تجهيز الملف للطباعة...');
+  try{
+    var blob=await makePDF(rep.html);
+    var w=await plug('Filesystem').writeFile({path:rep.filename,data:await blobToBase64(blob),directory:'CACHE'});
+    await plug('PrintPDF').print({uri:w.uri,name:rep.title});
+  }catch(e){toast('تعذر الطباعة: '+(e&&e.message||e))}
 }
 async function sharePDF(rep){
   toast('جارٍ تجهيز الملف...');
@@ -513,7 +567,7 @@ function doRestore(file){
 /* ---------- events ---------- */
 document.addEventListener('click',function(ev){
   var t=ev.target;
-  var el=t.closest?t.closest('[data-tab],[data-add],[data-eid],[data-w],[data-rt],#dprev,#dnext,#wback,#wpdf,#wprint,#rpdf,#rprint,#bk,#rs,#wipe'):null;
+  var el=t.closest?t.closest('[data-tab],[data-add],[data-eid],[data-w],[data-rt],#dprev,#dnext,#wback,#wview,#wpdf,#wprint,#rview,#rpdf,#rprint,#vclose,#vzoom,#vprint,#vpdf,#bk,#rs,#wipe'):null;
   if(!el)return;
   if(el.dataset.tab){setTab(el.dataset.tab);return}
   if(el.dataset.add){openForm(el.dataset.add,null,el.dataset.worker);return}
@@ -525,9 +579,15 @@ document.addEventListener('click',function(ev){
     case 'dnext':ui.day=addDays(ui.day,1);renderHome();break;
     case 'wback':backWorker();break;
     case 'wpdf':sharePDF(buildReport('worker',{worker:ui.worker}));break;
-    case 'wprint':printReport(buildReport('worker',{worker:ui.worker}));break;
+    case 'wview':openPreview(buildReport('worker',{worker:ui.worker}));break;
+    case 'wprint':printAny(buildReport('worker',{worker:ui.worker}));break;
+    case 'rview':openPreview(currentReport());break;
     case 'rpdf':sharePDF(currentReport());break;
-    case 'rprint':printReport(currentReport());break;
+    case 'rprint':printAny(currentReport());break;
+    case 'vclose':closeViewer();break;
+    case 'vzoom':zoomed=!zoomed;$('vwb').classList.toggle('z',zoomed);break;
+    case 'vprint':if(viewRep)printAny(viewRep);break;
+    case 'vpdf':if(viewRep)sharePDF(viewRep);break;
     case 'bk':doBackup();break;
     case 'rs':$('restoreFile').click();break;
     case 'wipe':
