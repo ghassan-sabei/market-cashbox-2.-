@@ -1,5 +1,5 @@
-const CACHE = 'mcb-v1';
-const FILES = ['./', 'index.html', 'manifest.json', 'lib/jspdf.umd.min.js', 'lib/html2canvas.min.js', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'mcb-v2';
+const FILES = ['./', 'index.html', 'app.html', 'manifest.json', 'lib/jspdf.umd.min.js', 'lib/html2canvas.min.js', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
 });
