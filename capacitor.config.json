@@ -1,0 +1,8 @@
+{
+  "appId": "com.marketcashbox.app",
+  "appName": "صندوق المشتريات",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}
