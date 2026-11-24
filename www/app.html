@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f766e">
-<meta name="app-version" content="1">
+<meta name="app-version" content="2">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <title>صندوق المشتريات</title>
@@ -219,7 +219,7 @@ function backupWarn(){
 function itemHTML(e,showDate){
   var title,sub='';
   if(e.type==='in'){title='وارد من الإدارة';sub=esc(e.note)}
-  else if(e.type==='out'){title=esc(e.seller)+' — '+esc(e.item);sub=(e.inv?'فاتورة '+esc(e.inv):'')+(e.note?(e.inv?' · ':'')+esc(e.note):'')}
+  else if(e.type==='out'){title=esc(e.seller)+' — '+esc(e.item);var parts=[];if(e.project)parts.push(esc(e.project));if(e.inv)parts.push('فاتورة '+esc(e.inv));if(e.note)parts.push(esc(e.note));sub=parts.join(' · ')}
   else{title='سلفة: '+esc(e.worker);sub=esc(e.note)}
   if(showDate)sub=fmtDate(e.date)+(sub?' · '+sub:'');
   var col=e.type==='in'?'in':e.type==='out'?'out':'adv';
@@ -330,13 +330,15 @@ function renderSettings(){
 
 /* ---------- entry form ---------- */
 function openForm(type,entry,presetWorker){
-  var e=entry||{type:type,date:todayStr(),cur:lsGet(KEY_CUR)||'IQD',amount:'',seller:'',item:'',inv:'',worker:presetWorker||'',note:''};
+  var e=entry||{type:type,date:todayStr(),cur:lsGet(KEY_CUR)||'IQD',amount:'',seller:'',item:'',inv:'',project:type==='out'?(lsGet('mcb_proj')||''):'',worker:presetWorker||'',note:''};
   var edit=!!entry;
   var h='<h3>'+(edit?'تعديل ':'تسجيل ')+TYPE[type]+'</h3>';
   h+='<label>التاريخ</label><input type="date" id="f_date" value="'+e.date+'">';
   h+='<label>العملة</label><div class="seg"><label><input type="radio" name="cur" value="IQD"'+(e.cur==='IQD'?' checked':'')+'>دينار</label><label><input type="radio" name="cur" value="USD"'+(e.cur==='USD'?' checked':'')+'>دولار</label></div>';
   h+='<label>المبلغ</label><input id="f_amt" inputmode="decimal" autocomplete="off" value="'+esc(e.amount)+'">';
   if(type==='out'){
+    h+='<label>اسم المشروع</label><input id="f_project" list="dl_p" autocomplete="off" value="'+esc(e.project)+'">';
+    h+='<datalist id="dl_p">'+uniq('project','out').map(function(x){return '<option value="'+esc(x)+'">'}).join('')+'</datalist>';
     h+='<label>اسم البائع</label><input id="f_seller" list="dl_s" autocomplete="off" value="'+esc(e.seller)+'">';
     h+='<label>المادة</label><input id="f_item" list="dl_i" autocomplete="off" value="'+esc(e.item)+'">';
     h+='<label>رقم الفاتورة (من دفتر الفواتير)</label><input id="f_inv" autocomplete="off" value="'+esc(e.inv)+'">';
@@ -371,9 +373,10 @@ function saveForm(type,entry){
   if(!(amt>0))return err('اكتب مبلغاً صحيحاً');
   amt=Math.round(amt*100)/100;
   var cur=document.querySelector('input[name=cur]:checked').value;
-  var rec={type:type,date:date,cur:cur,amount:amt,seller:'',item:'',inv:'',worker:'',note:clean($('f_note').value)};
+  var rec={type:type,date:date,cur:cur,amount:amt,seller:'',item:'',inv:'',project:'',worker:'',note:clean($('f_note').value)};
   if(type==='out'){
-    rec.seller=clean($('f_seller').value);rec.item=clean($('f_item').value);rec.inv=clean($('f_inv').value);
+    rec.project=clean($('f_project').value);rec.seller=clean($('f_seller').value);rec.item=clean($('f_item').value);rec.inv=clean($('f_inv').value);
+    if(!rec.project)return err('اكتب اسم المشروع');
     if(!rec.seller)return err('اكتب اسم البائع');
     if(!rec.item)return err('اكتب المادة');
   }
@@ -385,6 +388,7 @@ function saveForm(type,entry){
   else{rec.id=++db.seq;rec.ts=Date.now();db.entries.push(rec)}
   if(!save())return;
   lsSet(KEY_CUR,cur);
+  if(rec.project)lsSet('mcb_proj',rec.project);
   ui.day=date;
   closeSheet();
   render();
@@ -432,8 +436,24 @@ function summaryTable(from,to){
 }
 function entriesTable(list,withDate){
   if(!list.length)return '<p>لا توجد حركات.</p>';
-  var h='<table><thead><tr><th>#</th>'+(withDate?'<th>التاريخ</th>':'')+'<th>النوع</th><th>التفاصيل</th><th>رقم الفاتورة</th><th>دينار</th><th>دولار</th></tr></thead><tbody>';
-  list.forEach(function(e,i){h+='<tr><td>'+(i+1)+'</td>'+(withDate?'<td class="n">'+fmtDate(e.date)+'</td>':'')+'<td>'+TYPE[e.type]+'</td><td>'+entryDetails(e)+'</td><td>'+esc(e.inv)+'</td>'+amtCells(e)+'</tr>'});
+  var h='<table><thead><tr><th>#</th>'+(withDate?'<th>التاريخ</th>':'')+'<th>النوع</th><th>التفاصيل</th><th>المشروع</th><th>رقم الفاتورة</th><th>دينار</th><th>دولار</th></tr></thead><tbody>';
+  list.forEach(function(e,i){h+='<tr><td>'+(i+1)+'</td>'+(withDate?'<td class="n">'+fmtDate(e.date)+'</td>':'')+'<td>'+TYPE[e.type]+'</td><td>'+entryDetails(e)+'</td><td>'+esc(e.project)+'</td><td>'+esc(e.inv)+'</td>'+amtCells(e)+'</tr>'});
+  return h+'</tbody></table>';
+}
+function projectTable(list){
+  var m={},names=[];
+  list.forEach(function(e){
+    if(e.type!=='out')return;
+    var k=e.project||'بدون مشروع';
+    if(!m[k]){m[k]={IQD:0,USD:0,n:0};names.push(k)}
+    m[k][e.cur]+=e.amount;m[k].n++;
+  });
+  if(!names.length)return '';
+  names.sort(function(a,b){return a.localeCompare(b,'ar')});
+  var t={IQD:0,USD:0,n:0};
+  var h='<h2>المصروفات حسب المشروع</h2><table><thead><tr><th>المشروع</th><th>عدد الفواتير</th><th>دينار</th><th>دولار</th></tr></thead><tbody>';
+  names.forEach(function(k){var r=m[k];t.IQD+=r.IQD;t.USD+=r.USD;t.n+=r.n;h+='<tr><td>'+esc(k)+'</td><td class="n">'+r.n+'</td><td class="n">'+fmtNum(r.IQD)+'</td><td class="n">'+fmtNum(r.USD)+'</td></tr>'});
+  if(names.length>1)h+='<tr class="tt"><td>المجموع</td><td class="n">'+t.n+'</td><td class="n">'+fmtNum(t.IQD)+'</td><td class="n">'+fmtNum(t.USD)+'</td></tr>';
   return h+'</tbody></table>';
 }
 function buildReport(kind,p){
@@ -459,7 +479,7 @@ function buildReport(kind,p){
       title='تقرير الصندوق من '+fmtDate(from)+' إلى '+fmtDate(to);file='period-'+from+'_'+to+'.pdf';
       h+='<h1>تقرير الصندوق</h1><div class="sub">من '+fmtDate(from)+' إلى '+fmtDate(to)+'</div>';
     }
-    h+='<h2>الملخص</h2>'+summaryTable(from,to)+'<h2>الحركات</h2>'+entriesTable(list2,kind!=='day');
+    h+='<h2>الملخص</h2>'+summaryTable(from,to)+projectTable(list2)+'<h2>الحركات</h2>'+entriesTable(list2,kind!=='day');
   }
   h+='<div class="foot">'+stamp+' — صندوق المشتريات</div></div>';
   return {html:h,filename:file,title:title};
@@ -591,7 +611,7 @@ function doRestore(file){
       var seq=0;
       db={seq:0,entries:good.map(function(e){
         seq=Math.max(seq,e.id||0);
-        return {id:e.id||0,type:e.type,date:e.date,cur:e.cur,amount:e.amount,seller:e.seller||'',item:e.item||'',inv:e.inv||'',worker:e.worker||'',note:e.note||'',ts:e.ts||0};
+        return {id:e.id||0,type:e.type,date:e.date,cur:e.cur,amount:e.amount,seller:e.seller||'',item:e.item||'',inv:e.inv||'',project:e.project||'',worker:e.worker||'',note:e.note||'',ts:e.ts||0};
       })};
       db.entries.forEach(function(e){if(!e.id)e.id=++seq});
       db.seq=seq;
