@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f766e">
-<meta name="app-version" content="2">
+<meta name="app-version" content="3">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <title>صندوق المشتريات</title>
@@ -337,16 +337,13 @@ function openForm(type,entry,presetWorker){
   h+='<label>العملة</label><div class="seg"><label><input type="radio" name="cur" value="IQD"'+(e.cur==='IQD'?' checked':'')+'>دينار</label><label><input type="radio" name="cur" value="USD"'+(e.cur==='USD'?' checked':'')+'>دولار</label></div>';
   h+='<label>المبلغ</label><input id="f_amt" inputmode="decimal" autocomplete="off" value="'+esc(e.amount)+'">';
   if(type==='out'){
-    h+='<label>اسم المشروع</label><input id="f_project" list="dl_p" autocomplete="off" value="'+esc(e.project)+'">';
-    h+='<datalist id="dl_p">'+uniq('project','out').map(function(x){return '<option value="'+esc(x)+'">'}).join('')+'</datalist>';
-    h+='<label>اسم البائع</label><input id="f_seller" list="dl_s" autocomplete="off" value="'+esc(e.seller)+'">';
-    h+='<label>المادة</label><input id="f_item" list="dl_i" autocomplete="off" value="'+esc(e.item)+'">';
+    h+='<label>اسم المشروع</label><input id="f_project" autocomplete="off" value="'+esc(e.project)+'">';
+    h+='<label>اسم البائع</label><input id="f_seller" autocomplete="off" value="'+esc(e.seller)+'">';
+    h+='<label>المادة</label><input id="f_item" autocomplete="off" value="'+esc(e.item)+'">';
     h+='<label>رقم الفاتورة (من دفتر الفواتير)</label><input id="f_inv" autocomplete="off" value="'+esc(e.inv)+'">';
-    h+='<datalist id="dl_s">'+uniq('seller','out').map(function(x){return '<option value="'+esc(x)+'">'}).join('')+'</datalist><datalist id="dl_i">'+uniq('item','out').map(function(x){return '<option value="'+esc(x)+'">'}).join('')+'</datalist>';
   }
   if(type==='adv'){
-    h+='<label>اسم العامل</label><input id="f_worker" list="dl_w" autocomplete="off" value="'+esc(e.worker)+'">';
-    h+='<datalist id="dl_w">'+uniq('worker','adv').map(function(x){return '<option value="'+esc(x)+'">'}).join('')+'</datalist>';
+    h+='<label>اسم العامل</label><input id="f_worker" autocomplete="off" value="'+esc(e.worker)+'">';
   }
   h+='<label>ملاحظة (اختياري)</label><input id="f_note" autocomplete="off" value="'+esc(e.note)+'">';
   h+='<div class="err" id="f_err"></div>';
