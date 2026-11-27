@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f766e">
-<meta name="app-version" content="5">
+<meta name="app-version" content="6">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <title>صندوق المشتريات</title>
@@ -293,8 +293,8 @@ function renderReports(){
   if(r.type==='day')h+='<label class="lbl">التاريخ</label><input type="date" id="r_day" value="'+r.day+'">';
   else if(r.type==='proj'){
     var pl=projectNames();
-    if(!r.proj||pl.indexOf(r.proj)<0)r.proj=pl.length?pl[0]:'';
-    h+='<label class="lbl">المشروع</label>'+(pl.length?'<select id="r_p">'+pl.map(function(x){return '<option value="'+esc(x)+'"'+(x===r.proj?' selected':'')+'>'+esc(x)+'</option>'}).join('')+'</select>':'<div class="empty">لا توجد مشاريع مسجلة</div>');
+    if(!r.proj||(r.proj!=='__all'&&pl.indexOf(r.proj)<0))r.proj=pl.length?'__all':'';
+    h+='<label class="lbl">المشروع</label>'+(pl.length?'<select id="r_p"><option value="__all"'+(r.proj==='__all'?' selected':'')+'>كل المشاريع</option>'+pl.map(function(x){return '<option value="'+esc(x)+'"'+(x===r.proj?' selected':'')+'>'+esc(x)+'</option>'}).join('')+'</select>':'<div class="empty">لا توجد مشاريع مسجلة</div>');
     h+='<div class="grid2"><div><label class="lbl">من</label><input type="date" id="r_from" value="'+r.from+'"></div><div><label class="lbl">إلى</label><input type="date" id="r_to" value="'+r.to+'"></div></div>';
   }
   else if(r.type==='period')h+='<div class="grid2"><div><label class="lbl">من</label><input type="date" id="r_from" value="'+r.from+'"></div><div><label class="lbl">إلى</label><input type="date" id="r_to" value="'+r.to+'"></div></div>';
@@ -321,7 +321,7 @@ function showPreview(){
   if(r.type==='worker'){n=workerEntries(r.worker).length;unit='سلفة'}
   else if(r.type==='proj'){
     var u=r.from,v=r.to;if(u>v){var t3=u;u=v;v=t3}
-    n=db.entries.filter(function(e){return e.project===r.proj&&e.type!=='in'&&e.date>=u&&e.date<=v}).length;unit='حركة'}
+    n=db.entries.filter(function(e){return (r.proj==='__all'||e.project===r.proj)&&e.type!=='in'&&e.date>=u&&e.date<=v}).length;unit='حركة'}
   else{
     var x=r.type==='day'?r.day:r.from,y=r.type==='day'?r.day:r.to;
     if(x>y){var t=x;x=y;y=t}
@@ -487,8 +487,25 @@ function buildReport(kind,p){
   var h='<div class="rpt">',name,file,title;
   var stamp='صدر بتاريخ '+fmtDate(todayStr());
   if(kind==='proj'){
-    var pl=db.entries.filter(function(e){return e.project===p.project&&e.type!=='in'&&e.date>=p.from&&e.date<=p.to}).sort(cmp);
+    var all=p.project==='__all';
+    var pl=db.entries.filter(function(e){return (all||e.project===p.project)&&e.type!=='in'&&e.date>=p.from&&e.date<=p.to}).sort(cmp);
     var ps=sums(pl);
+    if(all){
+      title='تقرير كل المشاريع';file='projects-'+p.from+'_'+p.to+'.pdf';
+      h+='<h1>تقرير كل المشاريع</h1><div class="sub">من '+fmtDate(p.from)+' إلى '+fmtDate(p.to)+'</div>';
+      if(!pl.length)h+='<p>لا توجد حركات في هذه الفترة.</p>';
+      else{
+        h+=projectTable(pl);
+        var groups={},gn=[];
+        pl.forEach(function(e){var k=e.project||'بدون مشروع';if(!groups[k]){groups[k]=[];gn.push(k)}groups[k].push(e)});
+        gn.sort(function(a,b){return a.localeCompare(b,'ar')});
+        gn.forEach(function(k){
+          var gs=sums(groups[k]);
+          h+='<h2>'+esc(k)+'</h2>'+entriesTable(groups[k],true);
+          h+='<table><tbody><tr class="tt"><td>إجمالي '+esc(k)+' (صادر + سلف)</td><td class="n">دينار: '+fmtNum(gs.IQD.out+gs.IQD.adv)+'</td><td class="n">دولار: '+fmtNum(gs.USD.out+gs.USD.adv)+'</td></tr></tbody></table>';
+        });
+      }
+    }else{
     title='تقرير مشروع: '+p.project;file='project-'+p.from+'_'+p.to+'.pdf';
     h+='<h1>تقرير مشروع</h1><div class="sub">'+esc(p.project)+' — من '+fmtDate(p.from)+' إلى '+fmtDate(p.to)+'</div>';
     if(!pl.length)h+='<p>لا توجد حركات لهذا المشروع في هذه الفترة.</p>';
@@ -496,6 +513,7 @@ function buildReport(kind,p){
       h+='<table><thead><tr><th>العملة</th><th>الصادر (الفواتير)</th><th>السلف</th><th>الإجمالي</th></tr></thead><tbody>';
       ['IQD','USD'].forEach(function(c){var q=ps[c];h+='<tr><td>'+CUR[c]+'</td><td class="n">'+fmtNum(q.out)+'</td><td class="n">'+fmtNum(q.adv)+'</td><td class="n"><b>'+fmtNum(q.out+q.adv)+'</b></td></tr>'});
       h+='</tbody></table><h2>الحركات</h2>'+entriesTable(pl,true);
+    }
     }
   }else if(kind==='worker'){
     var list=workerEntries(p.worker);var s=sums(list);
