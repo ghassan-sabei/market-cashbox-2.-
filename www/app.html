@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f766e">
-<meta name="app-version" content="4">
+<meta name="app-version" content="5">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <title>صندوق المشتريات</title>
@@ -113,7 +113,7 @@ h4{margin:2px 0 10px;font-size:17px}
   <button data-tab="home"><i>💰</i>الصندوق</button>
   <button data-tab="adv"><i>👷</i>السلف</button>
   <button data-tab="rpt"><i>📄</i>التقارير</button>
-  <button data-tab="set"><i>💾</i>النسخ</button>
+  <button data-tab="set"><i>⚙️</i>الإعدادات</button>
 </nav>
 <div class="ov hidden" id="ov"><div class="sheet" id="sheet"></div></div>
 <div class="ov hidden" id="cf"></div>
@@ -131,7 +131,7 @@ h4{margin:2px 0 10px;font-size:17px}
 var KEY='mcb_v1', KEY_BK='mcb_lastbackup', KEY_CUR='mcb_lastcur', KEY_PREV='mcb_prev';
 var CUR={IQD:'دينار',USD:'دولار'};
 var TYPE={'in':'وارد','out':'صادر','adv':'سلفة'};
-var db={seq:0,entries:[]};
+var db={seq:0,entries:[],projects:[]};
 var ui={tab:'home',day:todayStr(),worker:null,q:'',rpt:{type:'day',day:todayStr(),from:todayStr(),to:todayStr(),worker:'',proj:''},proj:''};
 var sheetOpen=false,viewerOpen=false,viewRep=null,zoomed=false;
 
@@ -182,7 +182,7 @@ function clean(s){return String(s||'').replace(/\s+/g,' ').trim()}
 function weekday(s){try{var p=s.split('-').map(Number);return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('ar',{weekday:'long'})}catch(e){return ''}}
 function cmp(a,b){return a.date<b.date?-1:a.date>b.date?1:a.ts-b.ts}
 
-function load(){try{var s=localStorage.getItem(KEY);if(s){var d=JSON.parse(s);if(d&&Array.isArray(d.entries)){db=d;if(!db.seq)db.seq=db.entries.reduce(function(m,e){return Math.max(m,e.id||0)},0)}}}catch(e){}}
+function load(){try{var s=localStorage.getItem(KEY);if(s){var d=JSON.parse(s);if(d&&Array.isArray(d.entries)){db=d;if(!Array.isArray(db.projects))db.projects=[];if(!db.seq)db.seq=db.entries.reduce(function(m,e){return Math.max(m,e.id||0)},0)}}}catch(e){}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(db));return true}catch(e){toast('تعذر حفظ البيانات: الذاكرة ممتلئة');return false}}
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
@@ -193,14 +193,14 @@ function toast(m){var t=$('toast');t.textContent=m;t.classList.add('on');clearTi
 function sums(list){var r={IQD:{'in':0,out:0,adv:0},USD:{'in':0,out:0,adv:0}};list.forEach(function(e){r[e.cur][e.type]+=e.amount});return r}
 function net(s){return s['in']-s.out-s.adv}
 function balance(list){var s=sums(list);return {IQD:net(s.IQD),USD:net(s.USD)}}
-function projectNames(){var m={};db.entries.forEach(function(e){if(e.project&&(e.type==='out'||e.type==='adv'))m[e.project]=1});return Object.keys(m).sort(function(a,b){return a.localeCompare(b,'ar')})}
+function projectNames(){var m={};(db.projects||[]).forEach(function(x){m[x]=1});db.entries.forEach(function(e){if(e.project&&(e.type==='out'||e.type==='adv'))m[e.project]=1});return Object.keys(m).sort(function(a,b){return a.localeCompare(b,'ar')})}
 function uniq(field,type){var m={};db.entries.forEach(function(e){if((!type||e.type===type)&&e[field])m[e[field]]=1});return Object.keys(m).sort(function(a,b){return a.localeCompare(b,'ar')})}
 
 /* ---------- rendering ---------- */
 function setTab(t){ui.tab=t;ui.worker=null;render()}
 function render(){
   Array.prototype.forEach.call(document.querySelectorAll('#nav button'),function(b){b.classList.toggle('on',b.dataset.tab===ui.tab)});
-  var titles={home:'صندوق المشتريات',adv:'السلف',rpt:'التقارير',set:'النسخ الاحتياطي'};
+  var titles={home:'صندوق المشتريات',adv:'السلف',rpt:'التقارير',set:'الإعدادات'};
   $('hd').textContent=ui.tab==='adv'&&ui.worker?ui.worker:titles[ui.tab];
   var f={home:renderHome,adv:renderAdv,rpt:renderReports,set:renderSettings}[ui.tab];
   f();
@@ -333,6 +333,12 @@ function showPreview(){
 function renderSettings(){
   var last=lsGet(KEY_BK);
   var h='<div class="card"><div class="lbl">البيانات المحفوظة على هذا الجوال</div><div style="font-size:18px;font-weight:700">'+db.entries.length+' حركة</div><div class="lbl" style="margin-top:6px">آخر نسخة احتياطية: '+(last?fmtDate(last):'لا يوجد')+'</div></div>';
+  var pn=projectNames(),used={};
+  db.entries.forEach(function(e){if(e.project)used[e.project]=1});
+  h+='<div class="card"><h4>المشاريع</h4><div class="lbl">سجّل أسماء المشاريع هنا، وتظهر كخيارات عند تسجيل الصادر والسلف.</div>';
+  h+='<div class="row" style="margin-top:8px"><input id="p_new" autocomplete="off" placeholder="اسم مشروع جديد"><button class="btn pri" id="padd">إضافة</button></div>';
+  h+=pn.length?pn.map(function(x){return '<div class="it"><div class="tx"><div class="t">'+esc(x)+'</div></div><button class="sm" data-pdel="'+esc(x)+'">حذف</button></div>'}).join(''):'<div class="empty">لا توجد مشاريع بعد</div>';
+  h+='</div>';
   var pu=pendingUpdate();
   h+='<div class="card"><h4>إصدار البرنامج: '+APP_VERSION+'</h4>'+(isNative()?'<div class="lbl">يتحقق البرنامج من التحديثات تلقائياً عند فتحه، وتصلك بدون تنزيل ملف جديد.</div>'+(pu?'<button class="btn pri" id="applyupd" style="width:100%">يوجد تحديث (إصدار '+pu+')، اضغط لتطبيقه</button>':'<button class="btn" id="chkupd" style="width:100%">التحقق من التحديث</button>'):'<div class="lbl">التحديثات التلقائية متوفرة في تطبيق الأندرويد.</div>')+'</div>';
   h+='<div class="card"><h4>نسخة احتياطية</h4><div class="lbl">يحفظ ملفاً بكل بياناتك، ثم تختار واتساب أو أي مكان لإرساله لنفسك.</div><button class="btn pri" id="bk" style="width:100%">حفظ / إرسال نسخة احتياطية</button></div>';
@@ -342,6 +348,12 @@ function renderSettings(){
 }
 
 /* ---------- entry form ---------- */
+function projectSelect(cur){
+  var names=projectNames();
+  if(cur&&names.indexOf(cur)<0)names.push(cur);
+  if(!names.length)return '<div class="empty" id="f_project" data-empty="1" style="padding:8px 0">لا توجد مشاريع. أضفها من تبويب «الإعدادات».</div>';
+  return '<select id="f_project"><option value="">— اختر المشروع —</option>'+names.map(function(x){return '<option value="'+esc(x)+'"'+(x===cur?' selected':'')+'>'+esc(x)+'</option>'}).join('')+'</select>';
+}
 function openForm(type,entry,presetWorker){
   var e=entry||{type:type,date:todayStr(),cur:lsGet(KEY_CUR)||'IQD',amount:'',seller:'',item:'',inv:'',project:type==='out'?(lsGet('mcb_proj')||''):'',worker:presetWorker||'',note:''};
   if(type==='adv'&&!e.project)e.project=lsGet('mcb_proj')||'';
@@ -351,14 +363,14 @@ function openForm(type,entry,presetWorker){
   h+='<label>العملة</label><div class="seg"><label><input type="radio" name="cur" value="IQD"'+(e.cur==='IQD'?' checked':'')+'>دينار</label><label><input type="radio" name="cur" value="USD"'+(e.cur==='USD'?' checked':'')+'>دولار</label></div>';
   h+='<label>المبلغ</label><input id="f_amt" inputmode="decimal" autocomplete="off" value="'+esc(e.amount)+'">';
   if(type==='out'){
-    h+='<label>اسم المشروع</label><input id="f_project" autocomplete="off" value="'+esc(e.project)+'">';
+    h+='<label>اسم المشروع</label>'+projectSelect(e.project);
     h+='<label>اسم البائع</label><input id="f_seller" autocomplete="off" value="'+esc(e.seller)+'">';
     h+='<label>المادة</label><input id="f_item" autocomplete="off" value="'+esc(e.item)+'">';
     h+='<label>رقم الفاتورة (من دفتر الفواتير)</label><input id="f_inv" autocomplete="off" value="'+esc(e.inv)+'">';
   }
   if(type==='adv'){
     h+='<label>اسم العامل</label><input id="f_worker" autocomplete="off" value="'+esc(e.worker)+'">';
-    h+='<label>اسم المشروع</label><input id="f_project" autocomplete="off" value="'+esc(e.project)+'">';
+    h+='<label>اسم المشروع</label>'+projectSelect(e.project);
   }
   h+='<label>ملاحظة (اختياري)</label><input id="f_note" autocomplete="off" value="'+esc(e.note)+'">';
   h+='<div class="err" id="f_err"></div>';
@@ -387,15 +399,15 @@ function saveForm(type,entry){
   var cur=document.querySelector('input[name=cur]:checked').value;
   var rec={type:type,date:date,cur:cur,amount:amt,seller:'',item:'',inv:'',project:'',worker:'',note:clean($('f_note').value)};
   if(type==='out'){
-    rec.project=clean($('f_project').value);rec.seller=clean($('f_seller').value);rec.item=clean($('f_item').value);rec.inv=clean($('f_inv').value);
-    if(!rec.project)return err('اكتب اسم المشروع');
+    rec.project=clean($('f_project').value||'');rec.seller=clean($('f_seller').value);rec.item=clean($('f_item').value);rec.inv=clean($('f_inv').value);
+    if(!rec.project)return err('اختر المشروع (أضفه من الإعدادات)');
     if(!rec.seller)return err('اكتب اسم البائع');
     if(!rec.item)return err('اكتب المادة');
   }
   if(type==='adv'){
-    rec.worker=clean($('f_worker').value);rec.project=clean($('f_project').value);
+    rec.worker=clean($('f_worker').value);rec.project=clean($('f_project').value||'');
     if(!rec.worker)return err('اكتب اسم العامل');
-    if(!rec.project)return err('اكتب اسم المشروع');
+    if(!rec.project)return err('اختر المشروع (أضفه من الإعدادات)');
   }
   if(entry){var i=db.entries.findIndex(function(x){return x.id===entry.id});rec.id=entry.id;rec.ts=entry.ts;db.entries[i]=rec}
   else{rec.id=++db.seq;rec.ts=Date.now();db.entries.push(rec)}
@@ -616,7 +628,7 @@ function printReport(rep){
 }
 
 async function doBackup(){
-  var payload=JSON.stringify({app:'market-cashbox',version:1,exported:new Date().toISOString(),seq:db.seq,entries:db.entries});
+  var payload=JSON.stringify({app:'market-cashbox',version:1,exported:new Date().toISOString(),seq:db.seq,projects:db.projects||[],entries:db.entries});
   var blob=new Blob([payload],{type:'application/json'});
   var ok=await shareFile(blob,'market-cashbox-backup-'+todayStr()+'.json','نسخة احتياطية - صندوق المشتريات');
   if(ok){lsSet(KEY_BK,todayStr());if(ui.tab==='set')renderSettings();toast('تم حفظ النسخة')}
@@ -635,7 +647,7 @@ function doRestore(file){
       if(!ok)return;
       lsSet(KEY_PREV,JSON.stringify(db));
       var seq=0;
-      db={seq:0,entries:good.map(function(e){
+      db={seq:0,projects:Array.isArray(d.projects)?d.projects.filter(function(x){return typeof x==='string'&&x}):[],entries:good.map(function(e){
         seq=Math.max(seq,e.id||0);
         return {id:e.id||0,type:e.type,date:e.date,cur:e.cur,amount:e.amount,seller:e.seller||'',item:e.item||'',inv:e.inv||'',project:e.project||'',worker:e.worker||'',note:e.note||'',ts:e.ts||0};
       })};
@@ -650,9 +662,17 @@ function doRestore(file){
 /* ---------- events ---------- */
 document.addEventListener('click',function(ev){
   var t=ev.target;
-  var el=t.closest?t.closest('[data-tab],[data-add],[data-eid],[data-w],[data-rt],#dprev,#dnext,#wback,#wview,#wpdf,#wprint,#rview,#rpdf,#rprint,#vclose,#vzoom,#vprint,#vpdf,#applyupd,#chkupd,#bk,#rs,#wipe'):null;
+  var el=t.closest?t.closest('[data-tab],[data-add],[data-eid],[data-w],[data-rt],#dprev,#dnext,#wback,#wview,#wpdf,#wprint,#rview,#rpdf,#rprint,#vclose,#vzoom,#vprint,#vpdf,#applyupd,#chkupd,#bk,#padd,[data-pdel],#rs,#wipe'):null;
   if(!el)return;
   if(el.dataset.tab){setTab(el.dataset.tab);return}
+  if(el.id==='padd'){
+    var nm=clean($('p_new').value);if(!nm)return toast('اكتب اسم المشروع');
+    if(projectNames().indexOf(nm)>=0)return toast('هذا المشروع موجود');
+    db.projects.push(nm);if(save()){renderSettings();toast('تمت الإضافة')}return}
+  if(el.dataset.pdel!==undefined){
+    var pd=el.dataset.pdel;
+    if(db.entries.some(function(x){return x.project===pd}))return toast('المشروع مستخدم في حركات مسجلة ولا يمكن حذفه');
+    db.projects=db.projects.filter(function(x){return x!==pd});if(save())renderSettings();return}
   if(el.dataset.add){openForm(el.dataset.add,null,el.dataset.worker);return}
   if(el.dataset.eid){var e=db.entries.find(function(x){return x.id===Number(el.dataset.eid)});if(e)openForm(e.type,e);return}
   if(el.dataset.w){openWorker(el.dataset.w);return}
@@ -680,7 +700,7 @@ document.addEventListener('click',function(ev){
         if(!ok)return;
         return confirmBox('تأكيد أخير: حذف كل البيانات؟','نعم، احذف',true).then(function(ok2){
           if(!ok2)return;
-          lsSet(KEY_PREV,JSON.stringify(db));db={seq:0,entries:[]};save();render();toast('تم الحذف');
+          lsSet(KEY_PREV,JSON.stringify(db));db={seq:0,entries:[],projects:db.projects||[]};save();render();toast('تم الحذف');
         });
       });break;
   }
